@@ -10,6 +10,8 @@ from sklearn.cluster import KMeans
 from sklearn.neighbors import BallTree
 from tqdm import tqdm
 from natsort import natsorted
+import networkx as nx
+import matplotlib.pyplot as plt
 
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -26,7 +28,7 @@ class KeyboardPlayerPyGame(Player):
         super(KeyboardPlayerPyGame, self).__init__()
         
         # Variables for reading exploration data
-        self.save_dir = "data/images_subsample/"
+        self.save_dir = "data/exploration_data_old/images_subsample/"
         if not os.path.exists(self.save_dir):
             print(f"Directory {self.save_dir} does not exist, please download exploration data.")
 
@@ -42,6 +44,7 @@ class KeyboardPlayerPyGame(Player):
         # Initialize database for storing VLAD descriptors of FPV
         self.database = None
         self.goal = None
+        self.graph = None
 
     def reset(self):
         # Reset the player state
@@ -140,6 +143,7 @@ class KeyboardPlayerPyGame(Player):
         Display image from database based on its ID using OpenCV
         """
         path = self.save_dir + str(id) + ".jpg"
+        # path = self.save_dir + str(id) + ".png"
         if os.path.exists(path):
             img = cv2.imread(path)
             cv2.imshow(window_name, img)
@@ -147,11 +151,54 @@ class KeyboardPlayerPyGame(Player):
         else:
             print(f"Image with ID {id} does not exist")
 
+    def display_imgs_from_id(self, id, window_name):
+        """
+        Display images from database based on its ID using OpenCV
+        """
+        targets = []
+        for i in id:
+            path = self.save_dir + str(i) + ".jpg"
+            # path = self.save_dir + str(i) + ".png"
+            if os.path.exists(path):
+                img = cv2.imread(path)
+                targets.append(img)
+            else:
+                print(f"Image with ID {i} does not exist")
+                blank_img = np.zeros_like(targets[0]) if targets else np.zeros((100, 100, 3), dtype=np.uint8)
+                targets.append(blank_img)
+
+        # Create a 2x2 grid of the 4 views of target location
+        hor1 = cv2.hconcat(targets[:2])
+        hor2 = cv2.hconcat(targets[2:])
+        concat_img = cv2.vconcat([hor1, hor2])
+
+        w, h = concat_img.shape[:2]
+        
+        color = (0, 0, 0)
+
+        concat_img = cv2.line(concat_img, (int(h/2), 0), (int(h/2), w), color, 2)
+        concat_img = cv2.line(concat_img, (0, int(w/2)), (h, int(w/2)), color, 2)
+
+        w_offset = 25
+        h_offset = 10
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        line = cv2.LINE_AA
+        size = 0.75
+        stroke = 1
+
+        cv2.putText(concat_img, '1st View', (h_offset, w_offset), font, size, color, stroke, line)
+        cv2.putText(concat_img, '2nd View', (int(h/2) + h_offset, w_offset), font, size, color, stroke, line)
+        cv2.putText(concat_img, '3rd View', (h_offset, int(w/2) + w_offset), font, size, color, stroke, line)
+        cv2.putText(concat_img, '4th View', (int(h/2) + h_offset, int(w/2) + w_offset), font, size, color, stroke, line)
+
+        cv2.imshow(window_name, concat_img)
+        cv2.waitKey(1)
+    
     def compute_sift_features(self):
         """
         Compute SIFT features for images in the data directory
         """
-        files = natsorted([x for x in os.listdir(self.save_dir) if x.endswith('.jpg')])
+        files = natsorted([x for x in os.listdir(self.save_dir) if x.endswith('.jpg') or x.endswith('.png')])
         sift_descriptors = list()
         for img in tqdm(files, desc="Processing images"):
             img = cv2.imread(os.path.join(self.save_dir, img))
@@ -219,6 +266,88 @@ class KeyboardPlayerPyGame(Player):
         _, index = self.tree.query(q_VLAD, 1)
         return index[0][0]
 
+    def get_neighbors(self, img):
+        """
+        Find the nearest neighbors in the database based on VLAD descriptor
+        """
+        # Get the VLAD feature of the image
+        q_VLAD = self.get_VLAD(img).reshape(1, -1)
+        # This function returns the index of the closest match of the provided VLAD feature from the database the tree was created
+        # The '4' indicates the we want 4 nearest neighbors
+        _, index = self.tree.query(q_VLAD, 4)
+        index[0].sort()
+        return index[0]
+
+    def create_and_save_graph(self, save_path="graph"):
+        """
+        Create and save a connected graph of the data directory images.
+        """
+        # Define parameters
+        node_size = 10  # Number of images per node
+        num_nodes = len(os.listdir(self.save_dir)) // node_size  # Number of nodes
+
+        # Initialize adjacency matrix
+        adj_matrix = np.zeros((num_nodes, num_nodes))
+
+        # Initialize the graph
+        print("Drawing graph...")
+        graph = nx.Graph()
+
+        # Loop over each node and find adjacent nodes
+        for i in range(num_nodes):
+            # Connect consecutive nodes
+            if i < num_nodes - 1:
+                adj_matrix[i][i + 1] = 1
+                adj_matrix[i + 1][i] = 1
+
+            # Select one image from each node (e.g., the first image)
+            img_id = i * node_size
+            img_path = os.path.join(self.save_dir, f"{img_id}.jpg")
+            if not os.path.exists(img_path):
+                print(f"Image with ID {img_id} does not exist")
+                continue
+            
+            # Load the image
+            img = cv2.imread(img_path)
+            if img is None:
+                print(f"Failed to load image with ID {img_id}")
+                continue
+            
+            # Find the nearest neighbors within the current node and its neighbors
+            neighbors = self.get_neighbors(img)
+            for neighbor in neighbors:
+                # Calculate the node index of the neighbor
+                neighbor_node = neighbor // node_size
+                
+                if 0 <= neighbor_node < num_nodes:
+                    # Mark the adjacency in both directions
+                    adj_matrix[i][neighbor_node] = 1
+                    adj_matrix[neighbor_node][i] = 1
+
+        # Add edges based on adjacency matrix
+        for i in range(num_nodes):
+            for j in range(i + 1, num_nodes):
+                if adj_matrix[i][j] == 1:
+                    graph.add_edge(i, j)
+
+        # Save adjacency matrix as .npy file
+        adj_matrix_path = f"{save_path}_adj_matrix.npy"
+        np.save(adj_matrix_path, adj_matrix)
+        print(f"Adjacency matrix saved to {adj_matrix_path}")
+        
+        # Plot the graph
+        plt.figure(figsize=(10, 8))
+        pos = nx.spring_layout(graph)  # Layout for visualization
+        nx.draw(graph, pos, with_labels=True, node_color="skyblue", edge_color="gray", node_size=500, font_size=10)
+        plt.title("Connected Graph of Data Directory Images")
+
+        # Save the plot as .png
+        graph_image_path = f"{save_path}.png"
+        plt.savefig(graph_image_path)
+        print(f"Graph saved to {graph_image_path}")
+
+        return adj_matrix
+
     def pre_nav_compute(self):
         """
         Build BallTree for nearest neighbor search and find the goal ID
@@ -249,11 +378,11 @@ class KeyboardPlayerPyGame(Player):
         else:
             print("Loaded codebook from codebook.pkl")
         
-        # get VLAD emvedding for each image in the exploration phase
+        # get VLAD embedding for each image in the exploration phase
         if self.database is None:
             self.database = []
             print("Computing VLAD embeddings...")
-            exploration_observation = natsorted([x for x in os.listdir(self.save_dir) if x.endswith('.jpg')])
+            exploration_observation = natsorted([x for x in os.listdir(self.save_dir) if x.endswith('.jpg') or x.endswith('.png')])
             for img in tqdm(exploration_observation, desc="Processing images"):
                 img = cv2.imread(os.path.join(self.save_dir, img))
                 VLAD = self.get_VLAD(img)
@@ -264,7 +393,7 @@ class KeyboardPlayerPyGame(Player):
             
             # TODO: try tuning the leaf size for better performance
             print("Building BallTree...")
-            tree = BallTree(self.database, leaf_size=64)
+            tree = BallTree(self.database, leaf_size=32) # 64
             self.tree = tree        
 
 
@@ -274,6 +403,7 @@ class KeyboardPlayerPyGame(Player):
         """
         super(KeyboardPlayerPyGame, self).pre_navigation()
         self.pre_nav_compute()
+        self.graph = self.create_and_save_graph()
         
     def display_next_best_view(self):
         """
@@ -285,11 +415,13 @@ class KeyboardPlayerPyGame(Player):
 
         # Get the neighbor of current FPV
         # In other words, get the image from the database that closely matches current FPV
-        index = self.get_neighbor(self.fpv)
+        index = self.get_neighbors(self.fpv)
         # Display the image 5 frames ahead of the neighbor, so that next best view is not exactly same as current FPV
-        self.display_img_from_id(index+3, f'Next Best View')
+        # self.display_img_from_id(index+3, f'Next Best View')
+        # Display the images along several frames ahead of the neighbor, so that next best view is not exactly same as current FPV
+        self.display_imgs_from_id([index[0]+10, index[1]+10, index[2]+10, index[3]+10], f'Next Best Views')
         # Display the next best view id along with the goal id to understand how close/far we are from the goal
-        print(f'Next View ID: {index+3} || Goal ID: {self.goal}')
+        print(f'Next View ID: {[index[0]+10, index[1]+10, index[2]+10, index[3]+10]} || Goal ID: {self.goal}')
 
     def see(self, fpv):
         """

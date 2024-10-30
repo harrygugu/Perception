@@ -1,0 +1,16 @@
+28-Oct-24 22:42:05 - INFO: player.py is using vis_nav_game 1.2.1
+28-Oct-24 22:42:06 - INFO: vis_nav_game.core version=1.2.1
+28-Oct-24 22:42:06 - INFO: init from C:\Harry\PerceptionHW\Project\vis_nav_player\startup.json: {'ESSENTIAL_FILE_ID': '1CvIOxnKO8Z8NDBh-kKOpUuWEgPinLLSV', 'MAZE_FILE_ID': '1gF7HiL6dMFuTNBi87mvXrShrA93df-RK', 'MAZE_FILE_MD5_KEY': 'ee5b9a353f2c713e8f00333669a06fd0'}
+28-Oct-24 22:42:06 - INFO: Pass checking essential files
+28-Oct-24 22:42:06 - INFO: Verified C:\Harry\PerceptionHW\Project\vis_nav_player\data\maze.json
+28-Oct-24 22:42:06 - INFO: Start loading the map
+28-Oct-24 22:42:06 - INFO: Init rules from {'NAV_START_TIME': 1727755200.0, 'NOISY_MOTION': 1}
+28-Oct-24 22:42:06 - INFO: NAV_START_TIME set to 2024/10/01 00:00:00
+28-Oct-24 22:42:07 - INFO: System time=1730169726.8937087, Internet time=1730169727.0373678, diff=0.14365911483764648
+28-Oct-24 22:42:07 - INFO: NOISY_MOTION set to 1
+28-Oct-24 22:42:07 - INFO: Loaded rules for competition!
+28-Oct-24 22:42:16 - INFO: Finished loading the map: takes 9.892755031585693 s
+28-Oct-24 22:42:18 - INFO: Target Images processing completed.
+28-Oct-24 22:42:18 - INFO: EXPLORATION phase passed. Proceeding to NAVIGATION phase.
+28-Oct-24 22:58:09 - INFO: Saving the game, please wait...
+28-Oct-24 22:58:09 - INFO: Game saved successfully at C:\Harry\PerceptionHW\Project\vis_nav_player\data\save\game-20241028-225809.npy.
