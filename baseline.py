@@ -28,7 +28,7 @@ class KeyboardPlayerPyGame(Player):
         super(KeyboardPlayerPyGame, self).__init__()
         
         # Variables for reading exploration data
-        self.save_dir = "data/exploration_data_old/images_subsample/"
+        self.save_dir = "data/exploration_data/images_subsample/"
         if not os.path.exists(self.save_dir):
             print(f"Directory {self.save_dir} does not exist, please download exploration data.")
 
@@ -144,8 +144,8 @@ class KeyboardPlayerPyGame(Player):
         """
         Display image from database based on its ID using OpenCV
         """
-        path = self.save_dir + str(id) + ".jpg"
-        # path = self.save_dir + str(id) + ".png"
+        # path = self.save_dir + str(id) + ".jpg"
+        path = self.save_dir + str(id) + ".png"
         if os.path.exists(path):
             img = cv2.imread(path)
             cv2.imshow(window_name, img)
@@ -159,8 +159,8 @@ class KeyboardPlayerPyGame(Player):
         """
         targets = []
         for i in id:
-            path = self.save_dir + str(i) + ".jpg"
-            # path = self.save_dir + str(i) + ".png"
+            # path = self.save_dir + str(i) + ".jpg"
+            path = self.save_dir + str(i) + ".png"
             if os.path.exists(path):
                 img = cv2.imread(path)
                 targets.append(img)
@@ -279,7 +279,7 @@ class KeyboardPlayerPyGame(Player):
         _, index = self.tree.query(q_VLAD, 4)
         return index[0]
 
-    def create_and_save_graph(self, save_path="graph"):
+    def create_and_save_graph(self, node_size=10, threshold=5, save_path="graph"):
         """
         Create and save a connected graph of the data directory images.
         """
@@ -294,6 +294,42 @@ class KeyboardPlayerPyGame(Player):
         print("Drawing graph...")
         graph = nx.Graph()
 
+        # # Iterate through each node
+        # for node_i in range(num_nodes):
+        #     print(f"Node {node_i}")
+        #     # Define the frame indices that belong to this node
+        #     node_i_frames = range(node_i * node_size, (node_i + 1) * node_size)
+
+        #     for node_j in range(node_i + 1, num_nodes):  # Check only upper triangle to avoid redundancy
+        #         print(f"Node {node_i} - Node {node_j}")
+        #         node_j_frames = range(node_j * node_size, (node_j + 1) * node_size)
+
+        #         # Count how many images in node_i have node_j as a neighbor
+        #         count_neighbors = 0
+        #         for img_id in node_i_frames:
+        #             img_path = os.path.join(self.save_dir, f"{img_id}.jpg")
+        #             if not os.path.exists(img_path):
+        #                 print(f"Image with ID {img_id} does not exist")
+        #                 continue
+                    
+        #             # Load the image
+        #             img = cv2.imread(img_path)
+        #             if img is None:
+        #                 print(f"Failed to load image with ID {img_id}")
+        #                 continue
+
+        #             # Get neighbors of the current frame
+        #             neighbors = self.get_neighbors(img)
+
+        #             # Check if any neighbor frame is in node_j
+        #             if any(neighbor in node_j_frames for neighbor in neighbors):
+        #                 count_neighbors += 1
+
+        #         # Connect nodes if count_neighbors meets the threshold
+        #         if count_neighbors >= threshold:
+        #             adj_matrix[node_i, node_j] = 1
+        #             adj_matrix[node_j, node_i] = 1  # Since it's an undirected graph
+
         # Loop over each node and find adjacent nodes
         for i in range(num_nodes):
             # Connect consecutive nodes
@@ -302,7 +338,7 @@ class KeyboardPlayerPyGame(Player):
                 adj_matrix[i + 1][i] = 1
 
             # Select one image from each node (e.g., the first image)
-            img_id = i * node_size
+            img_id = i * node_size - 5
             img_path = os.path.join(self.save_dir, f"{img_id}.jpg")
             if not os.path.exists(img_path):
                 print(f"Image with ID {img_id} does not exist")
@@ -465,6 +501,7 @@ class KeyboardPlayerPyGame(Player):
         print(f'Next View ID: {[index[0]+10, index[1]+10, index[2]+10, index[3]+10]} || Goal ID: {self.goal}')
         self.frame = index[0]
         path = self.compute_shortest_path(self.adj_matrix_path, self.frame, self.goal)
+        self.display_img_from_id(path[1], f'Possible Shortcut')
 
     def see(self, fpv):
         """
