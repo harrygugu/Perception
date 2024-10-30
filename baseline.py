@@ -44,7 +44,9 @@ class KeyboardPlayerPyGame(Player):
         # Initialize database for storing VLAD descriptors of FPV
         self.database = None
         self.goal = None
+        self.frame = 0
         self.graph = None
+        self.adj_matrix_path = "graph_adj_matrix.npy"
 
     def reset(self):
         # Reset the player state
@@ -275,7 +277,6 @@ class KeyboardPlayerPyGame(Player):
         # This function returns the index of the closest match of the provided VLAD feature from the database the tree was created
         # The '4' indicates the we want 4 nearest neighbors
         _, index = self.tree.query(q_VLAD, 4)
-        index[0].sort()
         return index[0]
 
     def create_and_save_graph(self, save_path="graph"):
@@ -348,6 +349,45 @@ class KeyboardPlayerPyGame(Player):
 
         return adj_matrix
 
+    def compute_shortest_path(self, adj_matrix_path, current_frame, target_frame):
+        """
+        Compute the shortest path from the current frame to the target frame using the adjacency matrix.
+
+        Parameters:
+        adj_matrix_path (str): Path to the adjacency matrix saved as a .npy file.
+        current_frame (int): The starting frame (node).
+        target_frame (int): The destination frame (node).
+
+        Returns:
+        list: List of nodes representing the shortest path, or an empty list if no path exists.
+        """
+        # Define parameters
+        node_size = 10  # Number of images per node
+
+        # Load the adjacency matrix
+        adj_matrix = np.load(adj_matrix_path)
+
+        # Convert the adjacency matrix to a NetworkX graph
+        graph = nx.from_numpy_array(adj_matrix)
+
+        # Determine the nodes for the current and target frames
+        current_node = current_frame // node_size
+        target_node = target_frame // node_size
+
+        # Check if both nodes are in the graph
+        if current_node not in graph or target_node not in graph:
+            print(f"One of the nodes ({current_node} or {target_node}) is not in the graph.")
+            return []
+
+        # Compute the shortest path
+        try:
+            shortest_path = nx.shortest_path(graph, source=current_node, target=target_node)
+            print(f"The shortest path from {current_node} to {target_node} is: {shortest_path}")
+            return shortest_path
+        except nx.NetworkXNoPath:
+            print(f"No path exists between {current_node} and {target_node}.")
+            return []
+
     def pre_nav_compute(self):
         """
         Build BallTree for nearest neighbor search and find the goal ID
@@ -403,7 +443,8 @@ class KeyboardPlayerPyGame(Player):
         """
         super(KeyboardPlayerPyGame, self).pre_navigation()
         self.pre_nav_compute()
-        self.graph = self.create_and_save_graph()
+        if not os.path.exists(self.adj_matrix_path):
+            self.graph = self.create_and_save_graph()
         
     def display_next_best_view(self):
         """
@@ -422,6 +463,8 @@ class KeyboardPlayerPyGame(Player):
         self.display_imgs_from_id([index[0]+10, index[1]+10, index[2]+10, index[3]+10], f'Next Best Views')
         # Display the next best view id along with the goal id to understand how close/far we are from the goal
         print(f'Next View ID: {[index[0]+10, index[1]+10, index[2]+10, index[3]+10]} || Goal ID: {self.goal}')
+        self.frame = index[0]
+        path = self.compute_shortest_path(self.adj_matrix_path, self.frame, self.goal)
 
     def see(self, fpv):
         """
