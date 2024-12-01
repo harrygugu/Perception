@@ -12,6 +12,7 @@ from tqdm import tqdm
 from natsort import natsorted
 import networkx as nx
 import matplotlib.pyplot as plt
+import json
 
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -294,42 +295,6 @@ class KeyboardPlayerPyGame(Player):
         print("Drawing graph...")
         graph = nx.Graph()
 
-        # # Iterate through each node
-        # for node_i in range(num_nodes):
-        #     print(f"Node {node_i}")
-        #     # Define the frame indices that belong to this node
-        #     node_i_frames = range(node_i * node_size, (node_i + 1) * node_size)
-
-        #     for node_j in range(node_i + 1, num_nodes):  # Check only upper triangle to avoid redundancy
-        #         print(f"Node {node_i} - Node {node_j}")
-        #         node_j_frames = range(node_j * node_size, (node_j + 1) * node_size)
-
-        #         # Count how many images in node_i have node_j as a neighbor
-        #         count_neighbors = 0
-        #         for img_id in node_i_frames:
-        #             img_path = os.path.join(self.save_dir, f"{img_id}.jpg")
-        #             if not os.path.exists(img_path):
-        #                 print(f"Image with ID {img_id} does not exist")
-        #                 continue
-                    
-        #             # Load the image
-        #             img = cv2.imread(img_path)
-        #             if img is None:
-        #                 print(f"Failed to load image with ID {img_id}")
-        #                 continue
-
-        #             # Get neighbors of the current frame
-        #             neighbors = self.get_neighbors(img)
-
-        #             # Check if any neighbor frame is in node_j
-        #             if any(neighbor in node_j_frames for neighbor in neighbors):
-        #                 count_neighbors += 1
-
-        #         # Connect nodes if count_neighbors meets the threshold
-        #         if count_neighbors >= threshold:
-        #             adj_matrix[node_i, node_j] = 1
-        #             adj_matrix[node_j, node_i] = 1  # Since it's an undirected graph
-
         # Loop over each node and find adjacent nodes
         for i in range(num_nodes):
             # Connect consecutive nodes
@@ -385,7 +350,25 @@ class KeyboardPlayerPyGame(Player):
 
         return adj_matrix
 
-    def compute_shortest_path(self, adj_matrix_path, current_frame, target_frame):
+    def query_actions(self, json_file_path, indices):
+         # Load the JSON file
+        with open(json_file_path, 'r') as file:
+            data = json.load(file)
+        
+        actions = []
+        for index in indices:
+            data_index = str(index * 5)  # Convert index to string to match JSON keys
+            if data_index in data:
+                action = data[data_index].get("action", "Action.UNKNOWN")
+                if action != "Action.QUIT":
+                    actions.append(action)
+                else:
+                    actions.append("Action.IDLE")
+            else:
+                actions.append("Action.IDLE")  # Append IDLE if the index is not found
+        return actions
+    
+    def compute_shortest_path(self, adj_matrix_path, current_frame, target_frame, node_size=10):
         """
         Compute the shortest path from the current frame to the target frame using the adjacency matrix.
 
@@ -419,7 +402,12 @@ class KeyboardPlayerPyGame(Player):
         try:
             shortest_path = nx.shortest_path(graph, source=current_node, target=target_node)
             print(f"The shortest path from {current_node} to {target_node} is: {shortest_path}")
-            return shortest_path
+            frames = []
+            for node in shortest_path:
+                for i in range(node_size):
+                    frames.append(node * node_size + i)
+            commands = self.query_actions("data/image_actions.json", frames)
+            return shortest_path, commands
         except nx.NetworkXNoPath:
             print(f"No path exists between {current_node} and {target_node}.")
             return []
@@ -500,7 +488,8 @@ class KeyboardPlayerPyGame(Player):
         # Display the next best view id along with the goal id to understand how close/far we are from the goal
         print(f'Next View ID: {[index[0]+10, index[1]+10, index[2]+10, index[3]+10]} || Goal ID: {self.goal}')
         self.frame = index[0]
-        path = self.compute_shortest_path(self.adj_matrix_path, self.frame, self.goal)
+        path, commands = self.compute_shortest_path(self.adj_matrix_path, self.frame, self.goal)
+        print(f'Last command: {commands[-1]}')
         self.display_img_from_id(path[1], f'Possible Shortcut')
 
     def see(self, fpv):
