@@ -48,6 +48,7 @@ class KeyboardPlayerPyGame(Player):
         self.path = None
         self.config = {}
         self.model = SuperPoint(self.config).to(self.device)
+        self.count = 0
         #self.adj_matrix_path = "graph_adj_matrix.npy"
 
     def reset(self):
@@ -86,9 +87,10 @@ class KeyboardPlayerPyGame(Player):
                     # If yes, bitwise OR the current action with the new one
                     # This allows for multiple actions to be combined into a single action
                     self.last_act |= self.keymap[event.key]
-                else:
-                    # If a key is pressed that is not mapped to an action, then display target images
-                    self.show_target_images()
+                # else:
+                # #     If a key is pressed that is not mapped to an action, then display target images
+                # #     self.show_target_images()
+                #      self.display_next_best_view()
             # Check if a key has been released
             if event.type == pygame.KEYUP:
                 # Check if the released key is in the keymap
@@ -141,62 +143,6 @@ class KeyboardPlayerPyGame(Player):
         """
         super(KeyboardPlayerPyGame, self).set_target_images(images)
         self.show_target_images()
-    
-    def display_img_from_id(self, id, window_name):
-        """
-        Display image from database based on its ID using OpenCV
-        """
-        # path = self.save_dir + str(id) + ".jpg"
-        path = self.save_dir + str(id) + ".png"
-        if os.path.exists(path):
-            img = cv2.imread(path)
-            cv2.imshow(window_name, img)
-            cv2.waitKey(1)
-        else:
-            print(f"Image with ID {id} does not exist")
-
-    def display_imgs_from_id(self, id, window_name):
-        """
-        Display images from database based on its ID using OpenCV
-        """
-        targets = []
-        for i in id:
-            # path = self.save_dir + str(i) + ".jpg"
-            path = self.save_dir + str(i) + ".png"
-            if os.path.exists(path):
-                img = cv2.imread(path)
-                targets.append(img)
-            else:
-                print(f"Image with ID {i} does not exist")
-                blank_img = np.zeros_like(targets[0]) if targets else np.zeros((100, 100, 3), dtype=np.uint8)
-                targets.append(blank_img)
-
-        # Create a 2x2 grid of the 4 views of target location
-        hor1 = cv2.hconcat(targets[:2])
-        hor2 = cv2.hconcat(targets[2:])
-        concat_img = cv2.vconcat([hor1, hor2])
-
-        w, h = concat_img.shape[:2]
-        
-        color = (0, 0, 0)
-
-        concat_img = cv2.line(concat_img, (int(h/2), 0), (int(h/2), w), color, 2)
-        concat_img = cv2.line(concat_img, (0, int(w/2)), (h, int(w/2)), color, 2)
-
-        w_offset = 25
-        h_offset = 10
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        line = cv2.LINE_AA
-        size = 0.75
-        stroke = 1
-
-        cv2.putText(concat_img, '1st View', (h_offset, w_offset), font, size, color, stroke, line)
-        cv2.putText(concat_img, '2nd View', (int(h/2) + h_offset, w_offset), font, size, color, stroke, line)
-        cv2.putText(concat_img, '3rd View', (h_offset, int(w/2) + w_offset), font, size, color, stroke, line)
-        cv2.putText(concat_img, '4th View', (int(h/2) + h_offset, int(w/2) + w_offset), font, size, color, stroke, line)
-
-        cv2.imshow(window_name, concat_img)
-        cv2.waitKey(1)
 
     def superpoint(self, image):
         image = torch.as_tensor(image).float() #Convert np array to torch tensor
@@ -289,8 +235,76 @@ class KeyboardPlayerPyGame(Player):
             return shortest_path
         except nx.NetworkXNoPath:
             print(f"No path exists between {current_node} and {target_node}.")
-            return []   
+            return []  
+
+    def display_multiple_images(self, window_name="Combined Images"):
+        """Displays multiple images from the database in a single window."""
+        #self.count += 1
+        images = []
+        num_group = (len(self.path) // 5 + 1)
+        #print(num_group)
+        if self.count < num_group-1:
+            print(num_group - self.count)
+            for index in range(5):
+                path = self.save_dir + str(self.path[self.count*5+index]*3+self.offset) + ".jpg"
+                if os.path.exists(path):
+                    img = cv2.imread(path)
+                    images.append(img)
+                else:
+                    print(f"Image with ID {index} does not exist")
+        else:
+            print("Arrived!")
+            return
+        # Combine images vertically or horizontally (adjust as needed)
+        #print(len(images))
+        combined_image = np.concatenate(images, axis=1)  
+
+        cv2.imshow(window_name, combined_image)
+        cv2.waitKey(1)
+        # problem: the program either run action contrl or run display next best view(dnbv), can not switch back to action control once dnbv has been run. 
+
+    def display_imgs_from_id(self, id, window_name):
+        """
+        Display images from database based on its ID using OpenCV
+        """
+        targets = []
+        for i in id:
+            # path = self.save_dir + str(i) + ".jpg"
+            path = self.save_dir + str(i) + ".png"
+            if os.path.exists(path):
+                img = cv2.imread(path)
+                targets.append(img)
+            else:
+                print(f"Image with ID {i} does not exist")
+                blank_img = np.zeros_like(targets[0]) if targets else np.zeros((100, 100, 3), dtype=np.uint8)
+                targets.append(blank_img)
+
+        # Create a 2x2 grid of the 4 views of target location
+        hor1 = cv2.hconcat(targets[:2])
+        hor2 = cv2.hconcat(targets[2:])
+        concat_img = cv2.vconcat([hor1, hor2])
+
+        w, h = concat_img.shape[:2]
         
+        color = (0, 0, 0)
+
+        concat_img = cv2.line(concat_img, (int(h/2), 0), (int(h/2), w), color, 2)
+        concat_img = cv2.line(concat_img, (0, int(w/2)), (h, int(w/2)), color, 2)
+
+        w_offset = 25
+        h_offset = 10
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        line = cv2.LINE_AA
+        size = 0.75
+        stroke = 1
+
+        cv2.putText(concat_img, '1st View', (h_offset, w_offset), font, size, color, stroke, line)
+        cv2.putText(concat_img, '2nd View', (int(h/2) + h_offset, w_offset), font, size, color, stroke, line)
+        cv2.putText(concat_img, '3rd View', (h_offset, int(w/2) + w_offset), font, size, color, stroke, line)
+        cv2.putText(concat_img, '4th View', (int(h/2) + h_offset, int(w/2) + w_offset), font, size, color, stroke, line)
+
+        cv2.imshow(window_name, concat_img)
+        cv2.waitKey(1 )        
     def display_next_best_view(self):
         """
         Display the next best view based on the current first-person view
@@ -302,11 +316,13 @@ class KeyboardPlayerPyGame(Player):
         # Get the neighbor of current FPV
         # In other words, get the image from the database that closely matches current FPV
         #id_list = self.query(self.fpv)
-        self.current_id = self.query(self.fpv)
+        #self.current_id = self.query(self.fpv)
         # Display the image 5 frames ahead of the neighbor, so that next best view is not exactly same as current FPV
         # self.display_img_from_id(index+3, f'Next Best View')
         # Display the images along several frames ahead of the neighbor, so that next best view is not exactly same as current FPV
-        self.display_imgs_from_id(self.current_id, f'Current View in Database')
+        for i in range(len(self.path) // 3):  # Assuming each group of 3 elements holds ID data
+            #img_id = self.path[i] * 3 + 14 
+            self.display_multiple_images()
         # Display the next best view id along with the goal id to understand how close/far we are from the goal
         #print(f'Next View ID: {[index[0]+10, index[1]+10, index[2]+10, index[3]+10]} || Goal ID: {self.goal}')
         #self.display_img_from_id(path[1], f'Possible Shortcut')
@@ -346,31 +362,29 @@ class KeyboardPlayerPyGame(Player):
         if self._state:
             # If in exploration stage
             if self._state[1] == Phase.EXPLORATION:
-                # TODO: could you employ any technique to strategically perform exploration instead of random exploration
-                # to improve performance (reach target location faster)?
-                
                 # Nothing to do here since exploration data has been provided
                 pass
             
             # If in navigation stage
             elif self._state[1] == Phase.NAVIGATION:
-                # TODO: could you do something else, something smarter than simply getting the image closest to the current FPV?
-                
+    
                 if self.goal_id is None:
                     # Get the neighbor nearest to the front view of the target image and set it as goal
                     targets = self.get_target_images()
                     targets[0] = cv2.cvtColor(targets[0], cv2.COLOR_BGR2GRAY) / 255
                     self.goal_id = self.query(targets[0])
-                    print(f'Goal ID: {self.goal_id}')
+                    print(f'Goal ID: {self.goal_id}') # goal_id = 22336
                     # Compute at the begining only to save time
                     self.path = self.compute_shortest_path()
                     print(self.path)
                                 
                 # Key the state of the keys
                 keys = pygame.key.get_pressed()
+                #print(keys)
                 # If 'q' key is pressed, then display the next best view based on the current FPV
                 if keys[pygame.K_q]:
                     self.display_next_best_view()
+                    self.count += 1
 
         # Display the first-person view image on the pygame screen
         rgb = convert_opencv_img_to_pygame(fpv)
