@@ -21,11 +21,17 @@ python player.py
 3. Modify the player.py to implement your own solutions, 
 unless you have photographic memories!
 
+# Other Dependencies
+1. Pytorch
+2. joblib
+
 # Baseline Solution
 1. Download exploration data from link provided in the class.
 2. Unzip exploration_data.zip and place 'images' and 'images_subsample' under 'vis_nav_player/data' folder.
 3. Place 'startup.json' under 'vis_nav_player/' folder.
-4. Run baseline code
+4. Run SuperPoint_VPR.ipynb to obtain .pkl files
+5. Run 'build_adj_matrix.py'
+6. Run baseline code
    ```
    python baseline.py
    ```
