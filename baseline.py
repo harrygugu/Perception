@@ -8,6 +8,7 @@ import cv2
 import joblib
 import numpy as np
 import os
+import time
 import pickle
 from sklearn.cluster import KMeans
 from sklearn.neighbors import BallTree
@@ -49,6 +50,9 @@ class KeyboardPlayerPyGame(Player):
         self.config = {}
         self.model = SuperPoint(self.config).to(self.device)
         self.count = 0
+        self.tmp = 0
+        self.time_buffer = 0 #a buffer stores the time the last function is excuted 
+        self.debounce_delay = 0.25 #0.25s delay for debouncing a pressed button
         #self.adj_matrix_path = "graph_adj_matrix.npy"
 
     def reset(self):
@@ -241,26 +245,32 @@ class KeyboardPlayerPyGame(Player):
         """Displays multiple images from the database in a single window."""
         #self.count += 1
         images = []
+        img_names = []
         num_group = (len(self.path) // 5 + 1)
         #print(num_group)
-        if self.count < num_group-1:
-            print(num_group - self.count)
-            for index in range(5):
-                path = self.save_dir + str(self.path[self.count*5+index]*3+self.offset) + ".jpg"
-                if os.path.exists(path):
-                    img = cv2.imread(path)
-                    images.append(img)
-                else:
-                    print(f"Image with ID {index} does not exist")
-        else:
-            print("Arrived!")
-            return
-        # Combine images vertically or horizontally (adjust as needed)
-        #print(len(images))
-        combined_image = np.concatenate(images, axis=1)  
+        if self.count != self.tmp:
+            if self.count < num_group-1:
+                #print(num_group - self.count)
+                for index in range(5):
+                    path = self.save_dir + str(self.path[self.count*5+index]*3+self.offset) + ".jpg"
+                    if os.path.exists(path):
+                        img = cv2.imread(path)
+                        images.append(img)
+                        img_names.append(path.split('/')[-1].split('.')[0])
+                    else:
+                        print(f"Image with ID {index} does not exist")
+                            # Combine images vertically or horizontally (adjust as needed)
+                #print(len(images))
+                combined_image = np.concatenate(images, axis=1)  
+                if self.count != self.tmp:
+                    print("image displayed: ", img_names)
+                    self.tmp = self.count
+                self.time_buffer = time.time()
+                cv2.imshow(window_name, combined_image)
+                cv2.waitKey(1)
+            else:
+                self.count -= 1
 
-        cv2.imshow(window_name, combined_image)
-        cv2.waitKey(1)
         # problem: the program either run action contrl or run display next best view(dnbv), can not switch back to action control once dnbv has been run. 
 
     def display_imgs_from_id(self, id, window_name):
@@ -320,9 +330,9 @@ class KeyboardPlayerPyGame(Player):
         # Display the image 5 frames ahead of the neighbor, so that next best view is not exactly same as current FPV
         # self.display_img_from_id(index+3, f'Next Best View')
         # Display the images along several frames ahead of the neighbor, so that next best view is not exactly same as current FPV
-        for i in range(len(self.path) // 3):  # Assuming each group of 3 elements holds ID data
+        #for i in range(len(self.path) // 3):  # Assuming each group of 3 elements holds ID data
             #img_id = self.path[i] * 3 + 14 
-            self.display_multiple_images()
+        self.display_multiple_images()
         # Display the next best view id along with the goal id to understand how close/far we are from the goal
         #print(f'Next View ID: {[index[0]+10, index[1]+10, index[2]+10, index[3]+10]} || Goal ID: {self.goal}')
         #self.display_img_from_id(path[1], f'Possible Shortcut')
@@ -376,15 +386,20 @@ class KeyboardPlayerPyGame(Player):
                     print(f'Goal ID: {self.goal_id}') # goal_id = 22336
                     # Compute at the begining only to save time
                     self.path = self.compute_shortest_path()
-                    print(self.path)
+                    #print(self.path)
                                 
                 # Key the state of the keys
                 keys = pygame.key.get_pressed()
                 #print(keys)
                 # If 'q' key is pressed, then display the next best view based on the current FPV
-                if keys[pygame.K_q]:
-                    self.display_next_best_view()
+                if keys[pygame.K_q] and (time.time() - self.time_buffer) > self.debounce_delay:
                     self.count += 1
+                    self.display_next_best_view()                    
+                    print("Dispalying Next 5 Images")
+                if keys[pygame.K_e] and (time.time() - self.time_buffer) > self.debounce_delay:
+                    self.count -= 1
+                    self.display_next_best_view()
+                    print("Dispalying Last 5 Images")
 
         # Display the first-person view image on the pygame screen
         rgb = convert_opencv_img_to_pygame(fpv)
