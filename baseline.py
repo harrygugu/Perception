@@ -7,6 +7,7 @@ import pygame
 import cv2
 import joblib
 import numpy as np
+import json
 import os
 import time
 import pickle
@@ -46,7 +47,11 @@ class KeyboardPlayerPyGame(Player):
         self.database_name = joblib.load('database_name.pkl')
         self.tree = joblib.load('ball_tree.pkl')
         self.codebook = joblib.load('codebook.pkl')
+        self.actions_file = "data/image_actions.json"
         self.path = None
+        self.path_segments = None
+        self.frames = None
+        self.actions = None
         self.config = {}
         self.model = SuperPoint(self.config).to(self.device)
         self.count = 0
@@ -204,6 +209,84 @@ class KeyboardPlayerPyGame(Player):
             #id_list.append(id_name)
         return id_name
 
+    def query_actions(self, frames):
+        # Load the actions JSON file
+        with open(self.actions_file, 'r') as file:
+            actions_data = json.load(file)
+
+        actions = []
+        for index in range(len(frames)):
+            frame = frames[index]
+            frame_next = frames[index + 1]
+            if frame < frame_next:
+                for i in range(5): # downsample dataset -> original dataset
+                    action = actions_data.get(str(frame * 5 + i))
+                    actions.append(action)
+
+
+        return actions
+
+    def find_path_segments(self, path):
+        # Load the actions JSON file
+        with open(self.actions_file, 'r') as file:
+            actions_data = json.load(file)
+        
+        if not path:
+            return []
+
+        segments = []
+        current_segment = [path[0]]
+
+        for i in range(1, len(path)):
+            if abs(path[i] - path[i - 1]) == 1:  # Check if the current number is consecutive
+                current_segment.append(path[i])
+            else:
+                segments.append(current_segment)  # Add the completed segment
+                current_segment = [path[i]]  # Start a new segment
+
+        segments.append(current_segment)  # Add the last segment
+
+        # Compute frames and corresponding controls for each segment
+        frames = []
+        actions = []
+        for segment in segments:
+            start_node = segment[0]
+            end_node = segment[-1]
+            # Generate frames in ascending or descending order based on segment direction
+            if start_node <= end_node:
+                start_frame = start_node * self.node_size + 1
+                end_frame = (end_node + 1) * self.node_size
+                frame_sequence = list(range(start_frame, end_frame + 1))
+                frames.append(frame_sequence)
+                index_sequence = list(range(start_frame * 5, end_frame * 5 + 1))
+                action_sequence = []
+                for i in index_sequence:
+                    action_sequence.append(actions_data[str(i)].get("action"))
+                actions.append(action_sequence)
+            else:
+                start_frame = (start_node + 1) * self.node_size 
+                end_frame = end_node * self.node_size + 1
+                frame_sequence = list(range(start_frame, end_frame - 1, -1))
+                frames.append(frame_sequence)
+                index_sequence = list(range(start_frame * 5, end_frame * 5 - 1, -1))
+                action_sequence = []
+                for i in index_sequence:
+                    action = actions_data[str(i)].get("action")
+                    if action == "Action.FORWARD":
+                        reverse_action = "Action.BACKWARD"
+                    elif action == "Action.BACKWARD":
+                        reverse_action = "Action.FORWARD"
+                    elif action == "Action.LEFT":
+                        reverse_action = "Action.RIGHT"
+                    elif action == "Action.RIGHT":
+                        reverse_action = "Action.LEFT"
+                    else:
+                        reverse_action = "Action.IDLE"
+                    action_sequence.append(reverse_action)
+                actions.append(action_sequence)
+
+        return segments, frames, actions
+    
     def compute_shortest_path(self):
         """
         Compute the shortest path from the current frame to the target frame using the adjacency matrix.
@@ -240,7 +323,7 @@ class KeyboardPlayerPyGame(Player):
         except nx.NetworkXNoPath:
             print(f"No path exists between {current_node} and {target_node}.")
             return []  
-
+    
     def display_multiple_images(self, window_name="Combined Images"):
         """Displays multiple images from the database in a single window."""
         #self.count += 1
@@ -314,7 +397,8 @@ class KeyboardPlayerPyGame(Player):
         cv2.putText(concat_img, '4th View', (int(h/2) + h_offset, int(w/2) + w_offset), font, size, color, stroke, line)
 
         cv2.imshow(window_name, concat_img)
-        cv2.waitKey(1 )        
+        cv2.waitKey(1)
+
     def display_next_best_view(self):
         """
         Display the next best view based on the current first-person view
@@ -386,6 +470,7 @@ class KeyboardPlayerPyGame(Player):
                     print(f'Goal ID: {self.goal_id}') # goal_id = 22336
                     # Compute at the begining only to save time
                     self.path = self.compute_shortest_path()
+                    self.path_segments, self.frames, self.actions = self.find_path_segments(self.path)
                     #print(self.path)
                                 
                 # Key the state of the keys
