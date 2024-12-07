@@ -84,9 +84,9 @@ def create_and_save_graph(node_size=3, save_path=None):
     """
     Create and save a connected graph of the data directory images.
     """
-    num_nodes = (len(os.listdir(data_path)) - offset) // node_size + 2 # Number of nodes
+    num_nodes = len(os.listdir(data_path)) // node_size  # Number of nodes
     #num_nodes = round(num_nodes+0.5)
-    print(num_nodes)
+    #print(num_nodes)
 
     # Initialize adjacency matrix
     adj_matrix = np.zeros((num_nodes, num_nodes))
@@ -102,7 +102,7 @@ def create_and_save_graph(node_size=3, save_path=None):
             adj_matrix[i + 1][i] = 1
 
         # Select one image from each node (e.g., the first image)
-        img_id = i * node_size + 1 + offset
+        img_id = i * node_size + offset
         img_path = os.path.join(data_path, f"{img_id}.jpg")
         if not os.path.exists(img_path):
             print(f"Image with ID {img_id} does not exist")
@@ -118,12 +118,13 @@ def create_and_save_graph(node_size=3, save_path=None):
         neighbors = query(img, model)
         for neighbor in neighbors:
             # Calculate the node index of the neighbor
-            neighbor_node = (neighbor - offset) // node_size - 1 # To be optimized
-            print(neighbor_node,neighbor)
+            neighbor_node = (neighbor - offset) // node_size # To be optimized
+            #print(neighbor_node,neighbor)
             if neighbor > img_id + 2 or neighbor < img_id - 2:
                 # Mark the adjacency in both directions
                 adj_matrix[i][neighbor_node] = 1
-                adj_matrix[neighbor_node][i] = 1
+                #adj_matrix[neighbor_node][i] = 1
+        
 
     # # Save adjacency matrix as .npy file
     # adj_matrix_path = f"{save_path}_adj_matrix.npy"
@@ -140,13 +141,23 @@ def create_and_save_graph(node_size=3, save_path=None):
     # graph_image_path = f"{save_path}.png"
     # plt.savefig(graph_image_path)
     # print(f"Graph saved to {graph_image_path}")
+    # validation for symmetry adj_matrix
+    #breakpoint()
+    for i in range(num_nodes):
+        for j in range(num_nodes):
+            if ((adj_matrix[i][j]) == 1 and  (adj_matrix[j][i]) == 0) or ((adj_matrix[i][j]) == 0 and  (adj_matrix[j][i]) == 1) == 1:
+                adj_matrix[i][j] = 0
+                adj_matrix[j][i] = 0
+            
 
+    print(len(os.listdir(data_path)))
+    print(num_nodes)
     return adj_matrix
 
 if __name__ == "__main__":
     # Compute
-    #adj_matrix = create_and_save_graph(node_size=3)
-    #joblib.dump(adj_matrix, 'adj_matrix.pkl')
-    adj_matrix = joblib.load('adj_matrix.pkl')
-    print(adj_matrix[0,1212])
+    adj_matrix = create_and_save_graph(node_size=3)
+    joblib.dump(adj_matrix, 'adj_matrix.pkl')
+    #adj_matrix = joblib.load('adj_matrix.pkl')
+    print(adj_matrix[229,1204])
 
