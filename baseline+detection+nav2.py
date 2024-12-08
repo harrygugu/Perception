@@ -63,6 +63,7 @@ class KeyboardPlayerPyGame(Player):
         self.goal_id = None
         self.current_id = 49 ####modify
         self.offset = 49 #remove idle frame at start of exploration data
+        self.current_frame = None
         self.graph = None
         self.node_size = 3 
         self.num_nodes = (len(os.listdir(self.save_dir)) - self.offset) // self.node_size + 2 
@@ -139,7 +140,14 @@ class KeyboardPlayerPyGame(Player):
                 if event.key == pygame.K_i:
                     # Enable automatic mode
                     if not self.automatic_mode:
+                        try:
+                            cv2.destroyAllWindows(f'pause here frame id:{self.current_frame}')
+                        except SystemError as e:
+                            print("system_error")
+                            #if e.args[0] == ' OpenCV Error: (-1) The function is not implemented for the given arguments':
+                            pass  # Window doesn't exist, so we can ignore the error
                         self.automatic_mode = True
+
                         if not prev_automatic_mode and self.automatic_mode:
                             logging.info("Automatic mode enabled. Resuming from last position.") 
                     else:
@@ -196,6 +204,11 @@ class KeyboardPlayerPyGame(Player):
                     if action in [Action.FORWARD, Action.BACKWARD] and self.wall_detected():
                         if not self.paused:
                             logging.warning("Wall detected! Pausing automatic mode.")
+                            #print(self.frames,self.current_segment_index,self.current_action_index)
+                            self.current_frame = self.frames[self.current_segment_index][self.current_action_index // 5]
+                            pause_img= cv2.imread(self.save_dir+str(self.current_frame)+'.png')
+                            cv2.imshow(f'pause here frame id:{self.current_frame}',pause_img)
+                            cv2.waitKey(0)
                         self.paused = True   
                     # Stop moving forward/backward if wall is detected
                         return Action.IDLE
