@@ -33,13 +33,13 @@ class KeyboardPlayerPyGame(Player):
         self.screen = None  # Pygame screen
         self.keymap = None  # Mapping of keyboard keys to actions
         
-        #Automated control
+        # Automated control
         self.automatic_mode = False
         self.paused = False
         self.current_segment_index = 0
         self.current_action_index = 0
   
-        #Movement and position tracking
+        # Movement and position tracking
         self.action_queue = []
         self.movement_state = Action.IDLE
         self.position = np.array([0.0, 0.0])
@@ -48,15 +48,15 @@ class KeyboardPlayerPyGame(Player):
         self.path = [self.position.copy()]
         self.map_surface = None 
         
-        #Movement increments
+        # Movement increments
         self.increments_per_full_rotation = 147
         self.rotation_per_action = 360 / self.increments_per_full_rotation
         self.movement_per_action = 0.1       
         
         super(KeyboardPlayerPyGame, self).__init__()
         
-        #Variables for reading exploration data
-        self.save_dir = "./images_subsample_midterm/"
+        # Variables for reading exploration data
+        self.save_dir = "./data/exploration_data/images_subsample/"
         if not os.path.exists(self.save_dir):
             print(f"Directory {self.save_dir} does not exist, please download exploration data.")
 
@@ -72,7 +72,7 @@ class KeyboardPlayerPyGame(Player):
         self.tree = joblib.load('./pkl_midterm/ball_tree.pkl')
         self.codebook = joblib.load('./pkl_midterm/codebook.pkl')
         self.adj_matrix = joblib.load('./pkl_midterm/adj_matrix.pkl')
-        self.actions_file = "./action_mid_term/image_actions.json"
+        self.actions_file = "./data/image_actions.json"
         self.path = [self.position.copy()]
         self.path_segments = None
         self.frames = None
@@ -84,7 +84,6 @@ class KeyboardPlayerPyGame(Player):
         self.tmp = 0
         self.time_buffer = 0 #a buffer stores the time the last function is excuted 
         self.debounce_delay = 0.25 #0.25s delay for debouncing a pressed button
-        #self.adj_matrix_path = "graph_adj_matrix.npy"
 
     def reset(self):
         # Reset the player state
@@ -126,11 +125,6 @@ class KeyboardPlayerPyGame(Player):
         # Store previous states
         prev_automatic_mode = self.automatic_mode
         prev_paused = self.paused
-        
-        if self.action_queue:
-            action = self.action_queue.pop(0)
-            self.last_action = action
-            return action
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -139,23 +133,11 @@ class KeyboardPlayerPyGame(Player):
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_i:
                     # Enable automatic mode
-                    if not self.automatic_mode:
-                        try:
-                            cv2.destroyAllWindows(f'pause here frame id:{self.current_frame}')
-                        except SystemError as e:
-                            print("system_error")
-                            #if e.args[0] == ' OpenCV Error: (-1) The function is not implemented for the given arguments':
-                            pass  # Window doesn't exist, so we can ignore the error
-                        self.automatic_mode = True
-
-                        if not prev_automatic_mode and self.automatic_mode:
-                            logging.info("Automatic mode enabled. Resuming from last position.") 
-                    else:
+                    if self.automatic_mode:
                         pass
-                        # logging.info("Automatic mode is already enabled.") 
-                    # self.automatic_mode = True
-                    # self.current_segment_index = 0
-                    # self.current_action_index = 0
+                    else:
+                        self.automatic_mode = True
+                        logging.info("Automatic mode enabled. Resuming from current segment.") 
                 elif event.key == pygame.K_o:
                     # Disable automatic mode
                     if self.automatic_mode:
@@ -166,13 +148,7 @@ class KeyboardPlayerPyGame(Player):
                 # Only process normal controls if not in automatic mode
                     if event.key in self.keymap:
                         action = self.keymap[event.key]
-                        if action in [Action.LEFT, Action.RIGHT]:
-                            self.enqueue_rotation_actions(action)
-                            if self.action_queue:
-                                action = self.action_queue.pop(0)
-                                self.last_action = action
-                                return action
-                        elif action in [Action.FORWARD, Action.BACKWARD]:
+                        if action in [Action.LEFT, Action.RIGHT, Action.FORWARD, Action.BACKWARD]:
                             self.movement_state = action
                         else:
                             self.last_action = action
@@ -180,7 +156,7 @@ class KeyboardPlayerPyGame(Player):
             elif event.type == pygame.KEYUP and not self.automatic_mode:
                 if event.key in self.keymap:
                     action = self.keymap[event.key]
-                    if action in [Action.FORWARD, Action.BACKWARD]:
+                    if action in [Action.LEFT, Action.RIGHT, Action.FORWARD, Action.BACKWARD]:
                         if self.movement_state == action:
                             self.movement_state = Action.IDLE
                             
@@ -207,18 +183,22 @@ class KeyboardPlayerPyGame(Player):
                             #print(self.frames,self.current_segment_index,self.current_action_index)
                             self.current_frame = self.frames[self.current_segment_index][self.current_action_index // 5]
                             pause_img= cv2.imread(self.save_dir+str(self.current_frame)+'.png')
-                            cv2.imshow(f'pause here frame id:{self.current_frame}',pause_img)
-                            cv2.waitKey(0)
+                            cv2.imshow(f'Paused at frame id:{self.current_frame}', pause_img)
+                            cv2.waitKey(1)
                         self.paused = True   
                     # Stop moving forward/backward if wall is detected
                         return Action.IDLE
 
                     self.current_action_index += 1
+                    self.last_action = action
                     return action
                 else:
                     # Move to next segment or stop
                     self.current_segment_index += 1
                     self.current_action_index = 0
+                    # Disable automatic mode after finishing one segment
+                    self.automatic_mode = False
+                    logging.info("Segment finished. Automatic mode disabled. Press 'I' to continue to next segment.")
                     return Action.IDLE
             else:
                 #Revert to manual by choise
@@ -244,14 +224,15 @@ class KeyboardPlayerPyGame(Player):
         elif self.movement_state == Action.BACKWARD:
             self.last_action = self.movement_state
             return self.movement_state
+        elif self.movement_state == Action.LEFT:
+            self.last_action = self.movement_state
+            return self.movement_state
+        elif self.movement_state == Action.RIGHT:
+            self.last_action = self.movement_state
+            return self.movement_state
 
         self.last_action = Action.IDLE
         return Action.IDLE
-    
-    def enqueue_rotation_actions(self, rotation_action):
-        increments_per_45_degrees = int(self.increments_per_full_rotation * 10 / 360)
-        self.action_queue.extend([rotation_action] * increments_per_45_degrees)
-   
 
     def show_target_images(self):
         """
@@ -485,37 +466,23 @@ class KeyboardPlayerPyGame(Player):
                     try:
                         path = self.save_dir + str(self.node_path[self.count*5+index]*3+self.offset) + ".png"
                     except(IndexError):
-
                         pass
 
                     if os.path.exists(path):
-
                         img = cv2.imread(path)
-
                         images.append(img)
-
                         img_names.append(path.split('/')[-1].split('.')[0])
 
                     else:
-
                         print(f"Image with ID {index} does not exist")
-
                             # Combine images vertically or horizontally (adjust as needed)
 
-                #print(len(images))
-
                 combined_image = np.concatenate(images, axis=1)  
-
                 if self.count != self.tmp and len(img_names) != 0:
-
                     print("image displayed: ", img_names)
-
                     self.tmp = self.count
-
                 self.time_buffer = time.time()
-
                 cv2.imshow(window_name, combined_image)
-
                 cv2.waitKey(1)
 
             else:
@@ -671,7 +638,6 @@ class KeyboardPlayerPyGame(Player):
         #     # logging.info("No wall detected.")
         return wall_detected, edges, lines
 
-
     def wall_detected(self):
         if self.fpv is None:
             return False
@@ -681,7 +647,6 @@ class KeyboardPlayerPyGame(Player):
         roi = self.get_front_roi(self.fpv, width_percentage, height_percentage, vertical_offset_percentage)
         wall_detected, _, _ = self.detect_walls_in_roi(roi)
         return wall_detected 
-#--------------------------------------------------------------------------------------------------------------
 
     def see(self, fpv):
         """
@@ -768,95 +733,53 @@ class KeyboardPlayerPyGame(Player):
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)    
                 
                 if self.goal_id is None:
-
                     img_list = []
-
                     goal_list = []
 
                     # Get the neighbor nearest to the front view of the target image and set it as goal
-
                     targets = self.get_target_images()
-
                     print(len(targets))
-
                     for i in range(len(targets)):
-
                         targets[i] = cv2.cvtColor(targets[i], cv2.COLOR_BGR2GRAY) / 255
-
                         self.goal_id = self.query(targets[i])
-
                         goal_path = self.save_dir + str(self.goal_id) + ".png"
                         self.node_path = self.compute_shortest_path()
-                    
-                        #print(self.path)
 
                         if os.path.exists(goal_path):
-
                             img = cv2.imread(goal_path)
-
                             img_list.append(img)
-
                             goal_list.append(self.goal_id)
-
                             print('path of Goal_ID: ', self.goal_id , ' has length of: ',len(self.node_path))
-
                         else:
-
                             print(f"Goal Image with ID {self.goal_id} does not exist")
-
                             # Combine images vertically or horizontally (adjust as needed)
 
-                        
-
                     combined_goal_image = np.concatenate(img_list, axis=1)
-
-                    cv2.imshow('targets',combined_goal_image)
-
+                    cv2.imshow('targets', combined_goal_image)
                     cv2.waitKey(0)
 
-                    # Ask user the path to go:
-
-                    #decision = user keyboard inpui 1-4
-
+                    # Ask user the path to go: decision = user keyboard inpui 1-4
                     while True:
-
                         print("Choose a goal (1-", len(goal_list), "):") 
-
                         try:
-
                             decision = int(input())  
-
                             if 1 <= decision <= len(goal_list):
-
                                 break
-
                             else:
-
                                 print("Invalid choice. Please enter a number between 1 and", len(goal_list))
-
                         except ValueError:
-
                             print("Invalid input. Please enter a number.")
 
-
-
                     # Compute at the begining only to save time
-
                     self.goal_id = goal_list[decision-1]
-
                     self.node_path = self.compute_shortest_path()
                     self.path_segments, self.frames, self.actions = self.find_path_segments(self.node_path) ##3
+
                     # display the final decison
-
                     print(f'Goal ID: {self.goal_id}') # goal_id = 2336
-                    # Compute at the begining only to save time
-                    self.node_path = self.compute_shortest_path()
-                    self.path_segments, self.frames, self.actions = self.find_path_segments(self.node_path) ##3
-                    #print(self.path)
                                 
                 # Key the state of the keys
                 keys = pygame.key.get_pressed()
-                #print(keys)
                 # If 'q' key is pressed, then display the next best view based on the current FPV
                 if keys[pygame.K_q] and (time.time() - self.time_buffer) > self.debounce_delay:
                     self.count += 1
@@ -873,9 +796,6 @@ class KeyboardPlayerPyGame(Player):
         self.screen.blit(self.map_surface, (self.fpv.shape[1], 0))
         pygame.display.update()
 
-                
-
-                                
 
 if __name__ == "__main__":
     import vis_nav_game
