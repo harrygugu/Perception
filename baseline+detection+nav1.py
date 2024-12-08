@@ -61,8 +61,8 @@ class KeyboardPlayerPyGame(Player):
             print(f"Directory {self.save_dir} does not exist, please download exploration data.")
 
         self.goal_id = None
-        self.current_id = 0
-        self.offset = 0 #remove idle frame at start of exploration data
+        self.current_id = 49 ####modify
+        self.offset = 49 #remove idle frame at start of exploration data
         self.graph = None
         self.node_size = 3 
         self.num_nodes = (len(os.listdir(self.save_dir)) - self.offset) // self.node_size + 2 
@@ -71,6 +71,7 @@ class KeyboardPlayerPyGame(Player):
         self.tree = joblib.load('ball_tree.pkl')
         self.codebook = joblib.load('codebook.pkl')
         self.actions_file = "C:/Users/15463/Downloads/exploration_data (1)/image_actions.json"
+        self.adj_matrix = joblib.load('adj_matrix.pkl')
         self.path = [self.position.copy()]
         self.path_segments = None
         self.frames = None
@@ -120,6 +121,11 @@ class KeyboardPlayerPyGame(Player):
         """
         Handle player actions based on keyboard input
         """
+        
+        # Store previous states
+        prev_automatic_mode = self.automatic_mode
+        prev_paused = self.paused
+        
         if self.action_queue:
             action = self.action_queue.pop(0)
             self.last_action = action
@@ -132,19 +138,23 @@ class KeyboardPlayerPyGame(Player):
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_i:
                     # Enable automatic mode
-                    if not self.automatic_mode:
-                        self.automatic_mode = True
-                        logging.info("Automatic mode enabled. Resuming from last position.") 
+                    if self.automatic_mode:
+                        pass
                     else:
-                        logging.info("Automatic mode is already enabled.") 
-                    # self.automatic_mode = True
-                    # self.current_segment_index = 0
-                    # self.current_action_index = 0
+                        self.automatic_mode = True
+                        logging.info("Automatic mode enabled. Resuming from current segment.") 
+                    # else:
+                    #     pass
+                    #     # logging.info("Automatic mode is already enabled.") 
+                    # # self.automatic_mode = True
+                    # # self.current_segment_index = 0
+                    # # self.current_action_index = 0
                 elif event.key == pygame.K_o:
                     # Disable automatic mode
-                    self.automatic_mode = False
-                    self.paused = False
-                    logging.info("Automatic mode disabled.")
+                    if self.automatic_mode:
+                        self.automatic_mode = False
+                        logging.info("Automatic mode disabled.")
+                        self.paused = False
                 elif not self.automatic_mode:
                 # Only process normal controls if not in automatic mode
                     if event.key in self.keymap:
@@ -167,12 +177,14 @@ class KeyboardPlayerPyGame(Player):
                         if self.movement_state == action:
                             self.movement_state = Action.IDLE
                             
-        print("Checking automatic_mode:", self.automatic_mode)
+        # print("Checking automatic_mode:", self.automatic_mode)
         if self.automatic_mode and not self.paused:
-            print("Inside automatic_mode block")
+            if self.automatic_mode != prev_automatic_mode or (prev_paused and not self.paused):    
+                logging.info("Inside automatic_mode block")
+                
         # Automatic action sequence logic
         # Check if we still have actions and not at the end of the segment
-            if self.current_segment_index < len(self.actions):
+            if self.actions and self.current_segment_index < len(self.actions):
                 current_actions = self.actions[self.current_segment_index]
                 if self.current_action_index < len(current_actions):
                 # Convert the action string (e.g., "Action.FORWARD") to an Action enum
@@ -180,31 +192,37 @@ class KeyboardPlayerPyGame(Player):
                     action_name = action_str.split('.')[-1]
                     action = getattr(Action, action_name, Action.IDLE)
                     print("Automatic mode action:", action)
-
+                    
                 # Check for walls during automatic mode
                     if action in [Action.FORWARD, Action.BACKWARD] and self.wall_detected():
-                        logging.warning("Wall detected! Pausing automatic mode.")
+                        if not self.paused:
+                            logging.warning("Wall detected! Pausing automatic mode.")
                         self.paused = True   
                     # Stop moving forward/backward if wall is detected
                         return Action.IDLE
 
                     self.current_action_index += 1
+                    self.last_action = action
                     return action
                 else:
                     # Move to next segment or stop
                     self.current_segment_index += 1
                     self.current_action_index = 0
+                    # Disable automatic mode after finishing one segment
+                    self.automatic_mode = False
+                    logging.info("Segment finished. Automatic mode disabled. Press 'I' to continue to next segment.")
                     return Action.IDLE
             else:
                 #Revert to manual by choise
+                if self.automatic_mode:
+                    logging.info("No more actions. Automatic mode disabled.")
                 self.automatic_mode = False
-                logging.info("No more actions. Automatic mode disabled.")
                 return Action.IDLE
         else:
-            if self.automatic_mode and self.paused:
-                if not self.wall_detected():
+            if self.automatic_mode and self.paused and not self.wall_detected():
+                if self.paused:
                     logging.info("Wall cleared! Resuming automatic mode.")
-                    self.paused = False
+                self.paused = False
                         
 
             # If not automatic and no actions triggered:
@@ -381,7 +399,7 @@ class KeyboardPlayerPyGame(Player):
                 for i in index_sequence:
                     action = actions_data[str(i)].get("action")
                     if action == "Action.QUIT" or action == "Action.QUIT|CHECKIN":
-                        action =="Action.IDLE"
+                        action = "Action.IDLE"
                     action_sequence.append(action)
                 actions.append(action_sequence)
             else:
@@ -425,7 +443,7 @@ class KeyboardPlayerPyGame(Player):
 
         # Convert the adjacency matrix to a NetworkX graph
         
-        graph = nx.from_numpy_array(adj_matrix)
+        graph = nx.from_numpy_array(self.adj_matrix)
 
         # Determine the nodes for the current and target frames
         current_node = (self.current_id - self.offset) // self.node_size 
@@ -453,28 +471,50 @@ class KeyboardPlayerPyGame(Player):
         num_group = (len(self.node_path) // 5 + 1)
         #print(num_group)
         if self.count != self.tmp:
-            if self.count < num_group-1:
+            if self.count < num_group:
                 #print(num_group - self.count)
                 for index in range(5):
-                    path = self.save_dir + str(self.node_path[self.count*5+index]*3+self.offset) + ".png"
-                    print(path)
+                    try:
+                        path = self.save_dir + str(self.node_path[self.count*5+index]*3+self.offset) + ".png"
+                    except(IndexError):
+
+                        pass
+
                     if os.path.exists(path):
+
                         img = cv2.imread(path)
+
                         images.append(img)
+
                         img_names.append(path.split('/')[-1].split('.')[0])
+
                     else:
+
                         print(f"Image with ID {index} does not exist")
+
                             # Combine images vertically or horizontally (adjust as needed)
+
                 #print(len(images))
+
                 combined_image = np.concatenate(images, axis=1)  
-                if self.count != self.tmp:
+
+                if self.count != self.tmp and len(img_names) != 0:
+
                     print("image displayed: ", img_names)
+
                     self.tmp = self.count
+
                 self.time_buffer = time.time()
+
                 cv2.imshow(window_name, combined_image)
+
                 cv2.waitKey(1)
+
             else:
+
                 self.count -= 1
+
+                print("Goal Reached!!")
 
         # problem: the program either run action contrl or run display next best view(dnbv), can not switch back to action control once dnbv has been run. 
 
@@ -580,7 +620,7 @@ class KeyboardPlayerPyGame(Player):
         pygame.draw.circle(self.map_surface, (0, 0, 255), (x, y), 5)
         
 
-    def get_front_roi(self, image, width_percentage=0.4, height_percentage=0.08, vertical_offset_percentage=0.00):
+    def get_front_roi(self, image, width_percentage=0.2, height_percentage=0.1, vertical_offset_percentage=0.00):
         height, width = image.shape[:2]
         roi_width = int(width * width_percentage)
         roi_height = int(height * height_percentage)
@@ -627,8 +667,8 @@ class KeyboardPlayerPyGame(Player):
     def wall_detected(self):
         if self.fpv is None:
             return False
-        width_percentage = 0.4
-        height_percentage = 0.08
+        width_percentage = 0.2
+        height_percentage = 0.1
         vertical_offset_percentage = 0.00
         roi = self.get_front_roi(self.fpv, width_percentage, height_percentage, vertical_offset_percentage)
         wall_detected, _, _ = self.detect_walls_in_roi(roi)
@@ -683,8 +723,8 @@ class KeyboardPlayerPyGame(Player):
             # If in navigation stage
             elif self._state and self._state[1] == Phase.NAVIGATION:
                 # Parameters for ROI
-                width_percentage = 0.4
-                height_percentage = 0.08
+                width_percentage = 0.2
+                height_percentage = 0.1
                 vertical_offset_percentage = 0.00
 
                 roi = self.get_front_roi(self.fpv, width_percentage, height_percentage, vertical_offset_percentage)
@@ -720,11 +760,87 @@ class KeyboardPlayerPyGame(Player):
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)    
                 
                 if self.goal_id is None:
+
+                    img_list = []
+
+                    goal_list = []
+
                     # Get the neighbor nearest to the front view of the target image and set it as goal
+
                     targets = self.get_target_images()
-                    targets[0] = cv2.cvtColor(targets[0], cv2.COLOR_BGR2GRAY) / 255
-                    self.goal_id = self.query(targets[0])
-                    print(f'Goal ID: {self.goal_id}') # goal_id = 22336
+
+                    print(len(targets))
+
+                    for i in range(len(targets)):
+
+                        targets[i] = cv2.cvtColor(targets[i], cv2.COLOR_BGR2GRAY) / 255
+
+                        self.goal_id = self.query(targets[i])
+
+                        goal_path = self.save_dir + str(self.goal_id) + ".png"
+                        self.node_path = self.compute_shortest_path()
+                    
+                        #print(self.path)
+
+                        if os.path.exists(goal_path):
+
+                            img = cv2.imread(goal_path)
+
+                            img_list.append(img)
+
+                            goal_list.append(self.goal_id)
+
+                            print('path of Goal_ID: ', self.goal_id , ' has length of: ',len(self.node_path))
+
+                        else:
+
+                            print(f"Goal Image with ID {self.goal_id} does not exist")
+
+                            # Combine images vertically or horizontally (adjust as needed)
+
+                        
+
+                    combined_goal_image = np.concatenate(img_list, axis=1)
+
+                    cv2.imshow('targets',combined_goal_image)
+
+                    cv2.waitKey(0)
+
+                    # Ask user the path to go:
+
+                    #decision = user keyboard inpui 1-4
+
+                    while True:
+
+                        print("Choose a goal (1-", len(goal_list), "):") 
+
+                        try:
+
+                            decision = int(input())  
+
+                            if 1 <= decision <= len(goal_list):
+
+                                break
+
+                            else:
+
+                                print("Invalid choice. Please enter a number between 1 and", len(goal_list))
+
+                        except ValueError:
+
+                            print("Invalid input. Please enter a number.")
+
+
+
+                    # Compute at the begining only to save time
+
+                    self.goal_id = goal_list[decision-1]
+
+                    self.node_path = self.compute_shortest_path()
+                    self.path_segments, self.frames, self.actions = self.find_path_segments(self.node_path) ##3
+                    # display the final decison
+
+                    print(f'Goal ID: {self.goal_id}') # goal_id = 2336
                     # Compute at the begining only to save time
                     self.node_path = self.compute_shortest_path()
                     self.path_segments, self.frames, self.actions = self.find_path_segments(self.node_path) ##3
@@ -749,6 +865,7 @@ class KeyboardPlayerPyGame(Player):
         self.screen.blit(self.map_surface, (self.fpv.shape[1], 0))
         pygame.display.update()
 
+                
 if __name__ == "__main__":
     import vis_nav_game
     # Start the game with the KeyboardPlayerPyGame player
