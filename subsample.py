@@ -2,23 +2,31 @@ import os
 from PIL import Image
 
 # Paths to input and output folders
-input_folder = "data\images"
-output_folder = "data\images_subsample"
+input_folder = "data/exploration_data_maze_2/images"
+output_folder = "data/exploration_data_maze_2/images_subsample"
 
 # Create output folder if it doesn't exist
 os.makedirs(output_folder, exist_ok=True)
 
-# Get list of image files in input folder, sorted to maintain sequence
-image_files = sorted([f for f in os.listdir(input_folder) if f.endswith(('.png', '.jpg', '.jpeg'))])
+# Subsample and process every 5th image
+for i in range(len(os.listdir(input_folder))):
+    print(f"\rLoading image {i}/{len(os.listdir(input_folder))}", end="")
+    image_path = os.path.join(input_folder, f"image_{i}.png")
 
-# Subsample images every 5th and rename
-for i, filename in enumerate(image_files[::5]):
-    # Load image
-    img_path = os.path.join(input_folder, filename)
-    img = Image.open(img_path)
-
-    # Save with new name in output folder
-    new_name = f"{i}.png"
-    img.save(os.path.join(output_folder, new_name))
+    # Check if the image exists
+    if os.path.exists(image_path):
+        # Only process every 5th image
+        if i % 5 == 0:
+            try:
+                # Open the image
+                with Image.open(image_path) as img:
+                    # Save the image with a new name
+                    new_name = f"{i // 5}.png"
+                    img.save(os.path.join(output_folder, new_name))
+            except Exception as e:
+                print(f"Error processing {image_path}: {e}")
+    else:
+        print(f"Image {image_path} does not exist.")
+        break
 
 print("Subsampling complete!")
