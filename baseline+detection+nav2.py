@@ -56,7 +56,7 @@ class KeyboardPlayerPyGame(Player):
         super(KeyboardPlayerPyGame, self).__init__()
         
         #Variables for reading exploration data
-        self.save_dir = "C:/Users/15463/vis_nav_player/data/images_subsample/"
+        self.save_dir = "./images_subsample_midterm/"
         if not os.path.exists(self.save_dir):
             print(f"Directory {self.save_dir} does not exist, please download exploration data.")
 
@@ -67,11 +67,11 @@ class KeyboardPlayerPyGame(Player):
         self.node_size = 3 
         self.num_nodes = (len(os.listdir(self.save_dir)) - self.offset) // self.node_size + 2 
         self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-        self.database_name = joblib.load('database_name.pkl')
-        self.tree = joblib.load('ball_tree.pkl')
-        self.codebook = joblib.load('codebook.pkl')
-        self.actions_file = "C:/Users/15463/Downloads/exploration_data (1)/image_actions.json"
-        self.adj_matrix = joblib.load('adj_matrix.pkl')
+        self.database_name = joblib.load('./pkl_midterm/database_name.pkl')
+        self.tree = joblib.load('./pkl_midterm/ball_tree.pkl')
+        self.codebook = joblib.load('./pkl_midterm/codebook.pkl')
+        self.adj_matrix = joblib.load('./pkl_midterm/adj_matrix.pkl')
+        self.actions_file = "./action_mid_term/image_actions.json"
         self.path = [self.position.copy()]
         self.path_segments = None
         self.frames = None
@@ -236,7 +236,7 @@ class KeyboardPlayerPyGame(Player):
         return Action.IDLE
     
     def enqueue_rotation_actions(self, rotation_action):
-        increments_per_45_degrees = int(self.increments_per_full_rotation * 45 / 360)
+        increments_per_45_degrees = int(self.increments_per_full_rotation * 10 / 360)
         self.action_queue.extend([rotation_action] * increments_per_45_degrees)
    
 
@@ -385,8 +385,8 @@ class KeyboardPlayerPyGame(Player):
             end_node = segment[-1]
             # Generate frames in ascending or descending order based on segment direction
             if start_node <= end_node:
-                start_frame = start_node * self.node_size + 1
-                end_frame = (end_node + 1) * self.node_size
+                start_frame = start_node * self.node_size + 1 + self.offset
+                end_frame = (end_node + 1) * self.node_size + self.offset
                 frame_sequence = list(range(start_frame, end_frame + 1))
                 frames.append(frame_sequence)
                 index_sequence = list(range(start_frame * 5, end_frame * 5 + 1))
@@ -394,12 +394,12 @@ class KeyboardPlayerPyGame(Player):
                 for i in index_sequence:
                     action = actions_data[str(i)].get("action")
                     if action == "Action.QUIT" or action == "Action.QUIT|CHECKIN":
-                        action =="Action.IDLE"
+                        action ="Action.IDLE"
                     action_sequence.append(action)
                 actions.append(action_sequence)
             else:
-                start_frame = (start_node + 1) * self.node_size 
-                end_frame = end_node * self.node_size + 1
+                start_frame = (start_node + 1) * self.node_size + self.offset
+                end_frame = end_node * self.node_size + 1 + self.offset
                 frame_sequence = list(range(start_frame, end_frame - 1, -1))
                 frames.append(frame_sequence)
                 index_sequence = list(range(start_frame * 5, end_frame * 5 - 1, -1))
