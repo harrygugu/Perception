@@ -49,6 +49,7 @@ class KeyboardPlayerPyGame(Player):
         self.database_name = joblib.load('./pkl_midterm/database_name.pkl')
         self.tree = joblib.load('./pkl_midterm/ball_tree.pkl')
         self.codebook = joblib.load('./pkl_midterm/codebook.pkl')
+        self.adj_matrix = joblib.load('./pkl_midterm/adj_matrix.pkl')
         self.path = None
         self.config = {}
         self.model = SuperPoint(self.config).to(self.device)
@@ -56,7 +57,6 @@ class KeyboardPlayerPyGame(Player):
         self.tmp = 0
         self.time_buffer = 0 #a buffer stores the time the last function is excuted 
         self.debounce_delay = 0.25 #0.25s delay for debouncing a pressed button
-        #self.adj_matrix_path = "graph_adj_matrix.npy"
 
     def reset(self):
         # Reset the player state
@@ -219,12 +219,9 @@ class KeyboardPlayerPyGame(Player):
         Returns:
         list: List of nodes representing the shortest path, or an empty list if no path exists.
         """
-        # Load the adjacency matrix
-        adj_matrix = joblib.load('adj_matrix.pkl')
-
         # Convert the adjacency matrix to a NetworkX graph
         
-        graph = nx.from_numpy_array(adj_matrix)
+        graph = nx.from_numpy_array(self.adj_matrix)
 
         # Determine the nodes for the current and target frames
         current_node = (self.current_id - self.offset) // self.node_size 
@@ -252,10 +249,13 @@ class KeyboardPlayerPyGame(Player):
         num_group = (len(self.path) // 5 + 1)
         #print(num_group)
         if self.count != self.tmp:
-            if self.count < num_group-1:
+            if self.count < num_group:
                 #print(num_group - self.count)
                 for index in range(5):
-                    path = self.save_dir + str(self.path[self.count*5+index]*3+self.offset) + ".png"
+                    try:
+                        path = self.save_dir + str(self.path[self.count*5+index]*3+self.offset) + ".png"
+                    except(IndexError):
+                        pass
                     if os.path.exists(path):
                         img = cv2.imread(path)
                         images.append(img)
@@ -361,6 +361,7 @@ class KeyboardPlayerPyGame(Player):
                             print("Invalid input. Please enter a number.")
 
                     # Compute at the begining only to save time
+                    self.goal_id = goal_list[decision-1]
                     self.path = self.compute_shortest_path()
                     # display the final decison
                     print(f'Goal ID: {self.goal_id}') # goal_id = 2336
