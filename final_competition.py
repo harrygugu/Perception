@@ -71,8 +71,8 @@ class KeyboardPlayerPyGame(Player):
         self.database_name = joblib.load('./pkl_maze_1/database_name.pkl')
         self.tree = joblib.load('./pkl_maze_1/ball_tree.pkl')
         self.codebook = joblib.load('./pkl_maze_1/codebook.pkl')
-        # self.adj_matrix = joblib.load('./pkl_maze_1/adj_matrix.pkl') # query=2
-        self.adj_matrix = joblib.load('./adj_matrix.pkl') # query=4
+        self.adj_matrix = joblib.load('./pkl_maze_1/adj_matrix.pkl') # query=2
+        # self.adj_matrix = joblib.load('./adj_matrix.pkl') # query=4
         self.actions_file = "./data/exploration_data_maze_1/image_actions.json"
         self.path = [self.position.copy()]
         self.path_segments = None
@@ -177,7 +177,7 @@ class KeyboardPlayerPyGame(Player):
                     action = getattr(Action, action_name, Action.IDLE)
                     print(f"\rAutomatic mode action: {action}", end="")
                     
-                # Check for walls during automatic mode
+                    # Check for walls during automatic mode
                     if action in [Action.FORWARD, Action.BACKWARD] and self.wall_detected():
                         if not self.paused:
                             print("\nWall detected! Pausing automatic mode.")
@@ -185,10 +185,10 @@ class KeyboardPlayerPyGame(Player):
                             self.current_frame = self.frames[self.current_segment_index][self.current_action_index // 5]
                             pause_img= cv2.imread(self.save_dir+str(self.current_frame)+'.png')
                             cv2.imshow(f'Paused frame', pause_img)
-                            print(f'Paused at frame id: {self.current_frame}')
+                            print(f'\nPaused at frame id: {self.current_frame}')
                             cv2.waitKey(1)
                         self.paused = True   
-                    # Stop moving forward/backward if wall is detected
+                        # Stop moving forward/backward if wall is detected
                         return Action.IDLE
 
                     self.current_action_index += 1
@@ -200,10 +200,15 @@ class KeyboardPlayerPyGame(Player):
                     self.current_action_index = 0
                     # Disable automatic mode after finishing one segment
                     self.automatic_mode = False
+                    self.current_frame = self.frames[self.current_segment_index][self.current_action_index // 5]
+                    pause_img= cv2.imread(self.save_dir+str(self.current_frame)+'.png')
+                    cv2.imshow(f'Paused frame', pause_img)
+                    print(f'\nPaused at frame id: {self.current_frame}')
+                    cv2.waitKey(1)
                     print("\nSegment finished. Automatic mode disabled. Press 'I' to continue to next segment.")
                     return Action.IDLE
             else:
-                #Revert to manual by choise
+                # Revert to manual by choise
                 if self.automatic_mode:
                     print("\nNo more actions. Automatic mode disabled.")
                 self.automatic_mode = False
@@ -215,7 +220,7 @@ class KeyboardPlayerPyGame(Player):
                 self.paused = False
                         
 
-            # If not automatic and no actions triggered:
+        # If not automatic and no actions triggered:
         if self.movement_state == Action.FORWARD:
             if self.wall_detected():
                 self.movement_state = Action.IDLE
