@@ -1,6 +1,5 @@
 from vis_nav_game import Player, Action, Phase
-from superpoint import SuperPoint
-from build_adj_matrix import query
+from superpoint import SuperPoints
 import torch
 import pygame
 import cv2
@@ -21,15 +20,11 @@ import math
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-#Make sure change the path in line 59 and line 73 for subsample data and image action json. 
-
-
-#Define a class for a player controlled by keyboard input using pygame
+# Define a class for a player controlled by keyboard input using pygame
 class KeyboardPlayerPyGame(Player):
     def __init__(self):
         # Initialize class variables
         self.fpv = None  # First-person view image
-        # self.last_act = Action.IDLE  # Last action taken by the player
         self.screen = None  # Pygame screen
         self.keymap = None  # Mapping of keyboard keys to actions
         
@@ -48,11 +43,6 @@ class KeyboardPlayerPyGame(Player):
         self.path = [self.position.copy()]
         self.map_surface = None 
         
-        # Movement increments
-        self.increments_per_full_rotation = 147
-        self.rotation_per_action = 360 / self.increments_per_full_rotation
-        self.movement_per_action = 0.1       
-        
         super(KeyboardPlayerPyGame, self).__init__()
         
         # Variables for reading exploration data
@@ -61,19 +51,18 @@ class KeyboardPlayerPyGame(Player):
             print(f"Directory {self.save_dir} does not exist, please download exploration data.")
 
         self.goal_id = None
-        self.current_id = 35 ####modify
-        self.offset = 35 #remove idle frame at start of exploration data
+        self.current_id = 0 
+        self.offset = 0 # remove idle frames at start of exploration data if there are any
         self.current_frame = None
         self.graph = None
         self.node_size = 3 
         self.num_nodes = (len(os.listdir(self.save_dir)) - self.offset) // self.node_size + 2 
         self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-        self.database_name = joblib.load('./pkl_maze_1/database_name.pkl')
-        self.tree = joblib.load('./pkl_maze_1/ball_tree.pkl')
-        self.codebook = joblib.load('./pkl_maze_1/codebook.pkl')
-        self.adj_matrix = joblib.load('./pkl_maze_1/adj_matrix.pkl') # query=2
-        # self.adj_matrix = joblib.load('./adj_matrix.pkl') # query=4
-        self.actions_file = "./data/exploration_data_maze_1/image_actions.json"
+        self.database_name = joblib.load('./pkl/pkl_maze_1_reduced/database_name.pkl')
+        self.tree = joblib.load('./pkl/pkl_maze_1_reduced/ball_tree.pkl')
+        self.codebook = joblib.load('./pkl/pkl_maze_1_reduced/codebook.pkl')
+        self.adj_matrix = joblib.load('./pkl/pkl_maze_1_reduced/adj_matrix_query=3.pkl')
+        self.actions_file = "./data/exploration_data_maze_1/action_filtered.json"
         self.path = [self.position.copy()]
         self.path_segments = None
         self.frames = None
@@ -83,13 +72,12 @@ class KeyboardPlayerPyGame(Player):
         self.model = SuperPoint(self.config).to(self.device)
         self.count = 0
         self.tmp = 0
-        self.time_buffer = 0 #a buffer stores the time the last function is excuted 
-        self.debounce_delay = 0.25 #0.25s delay for debouncing a pressed button
+        self.time_buffer = 0 # a buffer stores the time the last function is excuted 
+        self.debounce_delay = 0.25 # 0.25s delay for debouncing a pressed button
 
     def reset(self):
         # Reset the player state
         self.fpv = None
-        # self.last_act = Action.IDLE
         self.screen = None
 
         # Reset movement and position
@@ -132,21 +120,26 @@ class KeyboardPlayerPyGame(Player):
                 pygame.quit()
                 return Action.QUIT
             elif event.type == pygame.KEYDOWN:
+                # Enable automatic mode
                 if event.key == pygame.K_i:
-                    # Enable automatic mode
                     if self.automatic_mode:
                         pass
                     else:
                         self.automatic_mode = True
-                        print("Automatic mode enabled. Resuming from current segment.") 
+                        print("\nAutomatic mode enabled. Resuming from current segment.") 
+                # Disable automatic mode
                 elif event.key == pygame.K_o:
-                    # Disable automatic mode
                     if self.automatic_mode:
                         self.automatic_mode = False
-                        print("Automatic mode disabled.")
+                        print("\nAutomatic mode disabled.")
                         self.paused = False
-                elif not self.automatic_mode:
+                        self.current_frame = self.frames[self.current_segment_index][self.current_action_index // 5]
+                        pause_img= cv2.imread(self.save_dir+str(self.current_frame)+'.png')
+                        cv2.imshow(f'Paused frame', pause_img)
+                        print(f'\nPaused at frame id: {self.current_frame}')
+                        cv2.waitKey(1)
                 # Only process normal controls if not in automatic mode
+                elif not self.automatic_mode:
                     if event.key in self.keymap:
                         action = self.keymap[event.key]
                         if action in [Action.LEFT, Action.RIGHT, Action.FORWARD, Action.BACKWARD]:
@@ -161,17 +154,15 @@ class KeyboardPlayerPyGame(Player):
                         if self.movement_state == action:
                             self.movement_state = Action.IDLE
                             
-        # print("Checking automatic_mode:", self.automatic_mode)
+        # Automatic action sequence logic
         if self.automatic_mode and not self.paused:
             if self.automatic_mode != prev_automatic_mode or (prev_paused and not self.paused):    
                 print("Inside automatic_mode block")
-                
-        # Automatic action sequence logic
-        # Check if we still have actions and not at the end of the segment
+            # Check if we still have actions and not at the end of the segment
             if self.actions and self.current_segment_index < len(self.actions):
                 current_actions = self.actions[self.current_segment_index]
                 if self.current_action_index < len(current_actions):
-                # Convert the action string (e.g., "Action.FORWARD") to an Action enum
+                    # Convert the action string (e.g., "Action.FORWARD") to an Action enum
                     action_str = current_actions[self.current_action_index]
                     action_name = action_str.split('.')[-1]
                     action = getattr(Action, action_name, Action.IDLE)
@@ -181,7 +172,6 @@ class KeyboardPlayerPyGame(Player):
                     if action in [Action.FORWARD, Action.BACKWARD] and self.wall_detected():
                         if not self.paused:
                             print("\nWall detected! Pausing automatic mode.")
-                            #print(self.frames,self.current_segment_index,self.current_action_index)
                             self.current_frame = self.frames[self.current_segment_index][self.current_action_index // 5]
                             pause_img= cv2.imread(self.save_dir+str(self.current_frame)+'.png')
                             cv2.imshow(f'Paused frame', pause_img)
@@ -289,7 +279,7 @@ class KeyboardPlayerPyGame(Player):
         image = torch.as_tensor(image).float() #Convert np array to torch tensor
         image = image.unsqueeze(0).unsqueeze(0).to(self.device) #Resize the input data for [H,W] to [1,1,H,W]
         self.model.eval()
-        #_, inp = read_image(img, device)
+
         pred = self.model({'image': image}) #run model inference
         des = pred['descriptors'][0] #split the descriptor from the output
         des = torch.transpose(des, 0, 1)
@@ -299,7 +289,6 @@ class KeyboardPlayerPyGame(Player):
 
     # Computer VLAD for every query images
     def get_VLAD(self, X):
-
         predictedLabels = self.codebook.predict(X)
         centroids = self.codebook.cluster_centers_
         labels = self.codebook.labels_
@@ -307,14 +296,13 @@ class KeyboardPlayerPyGame(Player):
     
         m,d = X.shape
         VLAD_feature = np.zeros([k,d])
-        #computing the differences
 
-        # for all the clusters (visual words)
+        # computing the differences for all the clusters (visual words)
         for i in range(k):
             # if there is at least one descriptor in that cluster
             if np.sum(predictedLabels == i) > 0:
                 # add the diferences
-                VLAD_feature[i] = np.sum(X[predictedLabels==i,:] - centroids[i],axis=0)
+                VLAD_feature[i] = np.sum(X[predictedLabels==i,:] - centroids[i], axis=0)
         
 
         VLAD_feature = VLAD_feature.flatten()
@@ -326,19 +314,16 @@ class KeyboardPlayerPyGame(Player):
         return VLAD_feature
 
     def query(self, img, img_id=None):
-
-        #id_list = []
-        #image = cv2.imread(os.path.join(data_path,f"{img_id}.jpg"),cv2.IMREAD_GRAYSCALE) / 255
         descriptor = self.superpoint(img)
         VLAD_query = self.get_VLAD(descriptor).reshape(1, -1)
         dist, index = self.tree.query(VLAD_query, 1)
-        #print(index,img_id) # this is self.tree index not the image index
-        # index is an array of array of 1
+
+        # index is an array of 1
         for j in range(len(index[0])):
             id_name = self.database_name[index[0][j]]
             print(id_name)
             id_name = int(id_name.split('.')[0])
-            #id_list.append(id_name)
+            # id_list.append(id_name)
         return id_name
 
     def query_actions(self, frames):
@@ -351,7 +336,7 @@ class KeyboardPlayerPyGame(Player):
             frame = frames[index]
             frame_next = frames[index + 1]
             if frame < frame_next:
-                for i in range(5): # downsample dataset -> original dataset
+                for i in range(5): # subsampled dataset -> original dataset
                     action = actions_data.get(str(frame * 5 + i))
                     actions.append(action)
 
@@ -398,8 +383,8 @@ class KeyboardPlayerPyGame(Player):
                     action_sequence.append(action)
                 actions.append(action_sequence)
             else:
-                start_frame = (start_node + 1) * self.node_size + self.offset
-                end_frame = end_node * self.node_size + 1 + self.offset
+                start_frame = start_node * self.node_size + self.offset
+                end_frame = (end_node - 1) * self.node_size + 1 + self.offset
                 frame_sequence = list(range(start_frame, end_frame - 1, -1))
                 frames.append(frame_sequence)
                 index_sequence = list(range(start_frame * 5, end_frame * 5 - 1, -1))
@@ -437,7 +422,6 @@ class KeyboardPlayerPyGame(Player):
         adj_matrix = joblib.load('adj_matrix.pkl')
 
         # Convert the adjacency matrix to a NetworkX graph
-        
         graph = nx.from_numpy_array(self.adj_matrix)
 
         # Determine the nodes for the current and target frames
@@ -460,14 +444,12 @@ class KeyboardPlayerPyGame(Player):
     
     def display_multiple_images(self, window_name="Combined Images"):
         """Displays multiple images from the database in a single window."""
-        #self.count += 1
         images = []
         img_names = []
         num_group = (len(self.node_path) // 5 + 1)
-        #print(num_group)
+
         if self.count != self.tmp:
             if self.count < num_group:
-                #print(num_group - self.count)
                 for index in range(5):
                     try:
                         path = self.save_dir + str(self.node_path[self.count*5+index]*3+self.offset) + ".png"
@@ -481,8 +463,8 @@ class KeyboardPlayerPyGame(Player):
 
                     else:
                         print(f"Image with ID {index} does not exist")
-                            # Combine images vertically or horizontally (adjust as needed)
 
+                # Combine images vertically or horizontally (adjust as needed)
                 combined_image = np.concatenate(images, axis=1)  
                 if self.count != self.tmp and len(img_names) != 0:
                     print("image displayed: ", img_names)
@@ -494,8 +476,6 @@ class KeyboardPlayerPyGame(Player):
             else:
                 self.count -= 1
                 print("Goal Reached!!")
-
-        # problem: the program either run action contrl or run display next best view(dnbv), can not switch back to action control once dnbv has been run. 
 
     def display_imgs_from_id(self, id, window_name):
         """
@@ -581,7 +561,6 @@ class KeyboardPlayerPyGame(Player):
             self.heading = (self.heading - self.rotation_per_action) % 360
         self.path.append(self.position.copy())
         
-
     def update_map(self):
         if self.map_surface is None:
             return
@@ -598,7 +577,6 @@ class KeyboardPlayerPyGame(Player):
         y = int(offset_y - self.position[1] * scale)
         pygame.draw.circle(self.map_surface, (0, 0, 255), (x, y), 5)
         
-
     def get_front_roi(self, image, width_percentage=0.2, height_percentage=0.1, vertical_offset_percentage=0.00):
         height, width = image.shape[:2]
         roi_width = int(width * width_percentage)
